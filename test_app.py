@@ -1,75 +1,54 @@
 import pytest
 from datetime import datetime
-from app import app  # import Flask app từ app.py
 
-# Test client setup
+# Import app và LOWER_BOUND từ file app.py trong cùng repository
+from app import app as flask_app, LOWER_BOUND
+
+current_year = datetime.now().year
+
 @pytest.fixture
 def client():
-    app.testing = True
-    with app.test_client() as client:
+    flask_app.testing = True
+    with flask_app.test_client() as client:
         yield client
 
-# Thông điệp lỗi mong đợi (nếu app dùng thông điệp khác -> cập nhật ở đây)
-EXPECTED_ERROR_MISSING = ["Chưa nhập", "Vui lòng nhập", "không có dữ liệu"]
-EXPECTED_ERROR_NON_NUMERIC = ["Dữ liệu không hợp lệ", "không hợp lệ"]
-# Đồng bộ với app: lower bound = 1950
-LOWER_BOUND = 1950
+@pytest.mark.parametrize("input_value, expect_type, expect", [
+    # Hợp lệ
+    ("1990", "age", current_year - 1990),            # TC01
+    (str(1950), "age", current_year - 1950),         # TC02 lower bound
+    (str(current_year), "age", 0),                   # TC03 upper bound (năm hiện tại)
 
-def contains_any(text, needles):
-    return any(n in text for n in needles)
+    # Ngoài phạm vi
+    ("1949", "error_range", f"Vui lòng chọn năm sinh từ {LOWER_BOUND} đến {current_year}."),  # TC04
+    (str(current_year + 1), "error_range", f"Vui lòng chọn năm sinh từ {LOWER_BOUND} đến {current_year}."),  # TC05
 
-def post_birth_year(client, value):
-    return client.post("/", data={"birth_year": value}, follow_redirects=True)
+    # Dữ liệu không hợp lệ (non-numeric / empty / float / alphanumeric / malicious)
+    ("", "error_invalid", "Dữ liệu không hợp lệ."),        # TC06 empty
+    ("abcd", "error_invalid", "Dữ liệu không hợp lệ."),    # TC07 non-numeric
+    ("1990.5", "error_invalid", "Dữ liệu không hợp lệ."),  # TC08 float string
+    (" 1990 ", "age", current_year - 1990),               # TC09 whitespace (hợp lệ)
+    ("01990", "age", current_year - 1990),                # TC10 leading zeros (hợp lệ)
+    ("-1980", "error_range", f"Vui lòng chọn năm sinh từ {LOWER_BOUND} đến {current_year}."),  # TC11 negative -> out of range
+    ("100000", "error_range", f"Vui lòng chọn năm sinh từ {LOWER_BOUND} đến {current_year}."), # TC12 too large
+    ("199a", "error_invalid", "Dữ liệu không hợp lệ."),    # TC13 alphanumeric
+    ("01/01/1990", "error_invalid", "Dữ liệu không hợp lệ."), # TC14 date format
+    ("2020; DROP TABLE users;", "error_invalid", "Dữ liệu không hợp lệ."), # TC15 injection-like
+])
+def test_birth_year_post(client, input_value, expect_type, expect):
+    resp = client.post("/", data={"birth_year": input_value})
+    text = resp.get_data(as_text=True)
 
-def test_valid_birth_year_returns_age(client):
-    current_year = datetime.now().year
-    birth_year = 1990
-    expected_age = current_year - birth_year
+    # Với trường hợp trả về age: kiểm tra số tuổi xuất hiện trong HTML
+    if expect_type == "age":
+        assert str(expect) in text, f"Expected age {expect} to appear in response for input {input_value}. Response:\n{text}"
 
-    resp = post_birth_year(client, str(birth_year))
-    html = resp.get_data(as_text=True)
+    # Trường hợp lỗi do vượt ngoài phạm vi (range error)
+    elif expect_type == "error_range":
+        assert expect in text, f"Expected range error message for input {input_value}. Response:\n{text}"
 
-    assert resp.status_code == 200
-    assert str(expected_age) in html, f"Expected age {expected_age} to appear in response HTML."
+    # Trường hợp dữ liệu không hợp lệ (parse error / empty / non-numeric)
+    elif expect_type == "error_invalid":
+        assert expect in text, f"Expected invalid-data error message for input {input_value}. Response:\n{text}"
 
-@pytest.mark.parametrize("input_value", ["", None])
-def test_missing_birth_year_shows_error(client, input_value):
-    post_value = "" if input_value is None else input_value
-    resp = post_birth_year(client, post_value)
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert contains_any(html, EXPECTED_ERROR_MISSING + EXPECTED_ERROR_NON_NUMERIC), (
-        "Expected a missing-data or invalid-data error message to appear in response HTML."
-    )
-
-@pytest.mark.parametrize("input_value", ["abcd", "1990.5", "12.34"])
-def test_non_numeric_birth_year_shows_error(client, input_value):
-    resp = post_birth_year(client, input_value)
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert contains_any(html, EXPECTED_ERROR_NON_NUMERIC), (
-        "Expected a non-numeric / invalid-data error message to appear in response HTML."
-    )
-
-def test_birth_year_too_small_shows_error(client):
-    too_small = LOWER_BOUND - 1
-    resp = post_birth_year(client, str(too_small))
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert (str(LOWER_BOUND) in html) or contains_any(html, EXPECTED_ERROR_NON_NUMERIC), (
-        f"Expected an error message referencing lower bound {LOWER_BOUND} or 'invalid' message."
-    )
-
-def test_birth_year_too_large_shows_error(client):
-    current_year = datetime.now().year
-    too_large = current_year + 1
-    resp = post_birth_year(client, str(too_large))
-    html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert (str(current_year) in html) or contains_any(html, EXPECTED_ERROR_NON_NUMERIC + EXPECTED_ERROR_MISSING), (
-        "Expected an error message referencing current year or an invalid-data message."
-    )
+    else:
+        pytest.fail("Unknown expect_type")
