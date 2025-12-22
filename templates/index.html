@@ -10,15 +10,15 @@
 <div class="app">
     <div class="card">
         <h1>🎂 Tính tuổi</h1>
-        <p class="subtitle">Tính tuổi từ năm sinh (1950 → hiện tại)</p>
+        <p class="subtitle">Tính tuổi từ năm sinh ({{ lower_bound }} → hiện tại)</p>
 
         <form method="POST">
             <div class="input-group">
                 <input
                     type="number"
                     name="birth_year"
-                    min="1950"
-                    max="2025"
+                    min="{{ lower_bound }}"
+                    max="{{ current_year }}"
                     placeholder="🔍 Nhập năm sinh..."
                     required
                 >
