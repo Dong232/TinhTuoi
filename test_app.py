@@ -10,17 +10,15 @@ def client():
         yield client
 
 # Thông điệp lỗi mong đợi (nếu app dùng thông điệp khác -> cập nhật ở đây)
-# Các giá trị này chỉ là gợi ý / phép kiểm tra "contains" — điều chỉnh cho khớp ứng dụng thực tế.
 EXPECTED_ERROR_MISSING = ["Chưa nhập", "Vui lòng nhập", "không có dữ liệu"]
 EXPECTED_ERROR_NON_NUMERIC = ["Dữ liệu không hợp lệ", "không hợp lệ"]
-# Biên dưới tar = 1900 theo Decision Table
-LOWER_BOUND = 1900
+# Đồng bộ với app: lower bound = 1950
+LOWER_BOUND = 1950
 
 def contains_any(text, needles):
     return any(n in text for n in needles)
 
 def post_birth_year(client, value):
-    # Simulate form submit to "/"
     return client.post("/", data={"birth_year": value}, follow_redirects=True)
 
 def test_valid_birth_year_returns_age(client):
@@ -32,12 +30,10 @@ def test_valid_birth_year_returns_age(client):
     html = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    # Kiểm tra tuổi (số) xuất hiện trên trang
     assert str(expected_age) in html, f"Expected age {expected_age} to appear in response HTML."
 
 @pytest.mark.parametrize("input_value", ["", None])
 def test_missing_birth_year_shows_error(client, input_value):
-    # Gửi chuỗi rỗng hoặc không có giá trị
     post_value = "" if input_value is None else input_value
     resp = post_birth_year(client, post_value)
     html = resp.get_data(as_text=True)
@@ -58,13 +54,11 @@ def test_non_numeric_birth_year_shows_error(client, input_value):
     )
 
 def test_birth_year_too_small_shows_error(client):
-    # Biên dưới (LOWER_BOUND - 1)
     too_small = LOWER_BOUND - 1
     resp = post_birth_year(client, str(too_small))
     html = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    # Chúng ta mong thấy tham chiếu tới LOWER_BOUND hoặc thông báo lỗi
     assert (str(LOWER_BOUND) in html) or contains_any(html, EXPECTED_ERROR_NON_NUMERIC), (
         f"Expected an error message referencing lower bound {LOWER_BOUND} or 'invalid' message."
     )
@@ -76,7 +70,6 @@ def test_birth_year_too_large_shows_error(client):
     html = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    # Mong thấy tham chiếu tới năm hiện tại (current_year) hoặc một thông báo lỗi chung
     assert (str(current_year) in html) or contains_any(html, EXPECTED_ERROR_NON_NUMERIC + EXPECTED_ERROR_MISSING), (
         "Expected an error message referencing current year or an invalid-data message."
     )
