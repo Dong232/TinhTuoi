@@ -3,8 +3,8 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Đồng bộ với test: lower bound = 1900
-LOWER_BOUND = 1900
+# Đặt lower bound theo yêu cầu
+LOWER_BOUND = 1950
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -16,7 +16,6 @@ def index():
     if request.method == "POST":
         try:
             raw = request.form.get("birth_year")
-            # Nếu rỗng/None, sẽ gây ValueError và vào except -> "Dữ liệu không hợp lệ."
             birth_year = int(raw)
             if birth_year < LOWER_BOUND or birth_year > current_year:
                 error = f"Vui lòng chọn năm sinh từ {LOWER_BOUND} đến {current_year}."
